@@ -25,7 +25,7 @@ sourceSets {
 
 val allureVersion = "2.27.0"
 val jacksonVersion = "2.17.1"
-val jdbiVersion = "3.45.4"
+val mybatisVersion = "3.5.16"
 val aspectjAgent: Configuration by configurations.creating
 
 dependencies {
@@ -37,8 +37,7 @@ dependencies {
     implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310:$jacksonVersion")
     implementation("org.slf4j:slf4j-simple:2.0.13")
 
-    implementation("org.jdbi:jdbi3-core:$jdbiVersion")
-    implementation("org.jdbi:jdbi3-sqlobject:$jdbiVersion")
+    implementation("org.mybatis:mybatis:$mybatisVersion")
     implementation("com.zaxxer:HikariCP:5.1.0")
     implementation("org.postgresql:postgresql:42.7.4")
 

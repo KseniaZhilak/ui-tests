@@ -6,7 +6,7 @@ import io.qa.ui.testdata.TestData
 import io.qa.ui.testdata.UserSeed
 import io.qameta.allure.Epic
 import io.qameta.allure.Feature
-import org.jdbi.v3.core.statement.UnableToExecuteStatementException
+import org.apache.ibatis.exceptions.PersistenceException
 import spock.lang.Requires
 import spock.lang.Shared
 import spock.lang.Specification
@@ -93,7 +93,7 @@ class UsersDbSpec extends Specification {
         usersDb.insert(seed)
 
         then: "БД отклонила вставку, дубликат не появился"
-        thrown(UnableToExecuteStatementException)
+        thrown(PersistenceException)
         usersDb.findByEmail(seed.email()).isPresent()
     }
 }

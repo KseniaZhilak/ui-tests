@@ -6,16 +6,14 @@ import org.aeonbits.owner.Config;
 @Config.Sources({
         "system:properties",
         "system:env",
-        "file:${user.dir}/.env",
-        "classpath:env/${env}.properties",
-        "classpath:env/default.properties"
+        "classpath:.env.${env}"
 })
 public interface FrameworkConfig extends Config {
 
-    @Key("base.url")
+    @Key("BASE_URL")
     String baseUrl();
 
-    @Key("api.base.url")
+    @Key("API_BASE_URL")
     String apiBaseUrl();
 
     @Key("browser")

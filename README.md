@@ -7,7 +7,7 @@ UI-тесты с проверками в БД без Spring.
 | Page objects, компоненты, core | Java 17 |
 | Спеки | Groovy 3.0, Spock 2.3 |
 | Браузер | Selenide 7.16.0, Selenoid (CI) |
-| Конфигурация | Owner: `env/*.properties`, переменные окружения, `.env` |
+| Конфигурация | Owner: `.env.dev` / `.env.ift` (адреса и БД стенда), переменные окружения |
 | База данных | PostgreSQL, JDBI 3, HikariCP |
 | Отчёты | Allure-адаптеры пишут `build/allure-results`, которые уходят в Allure TestOps |
 
@@ -21,13 +21,13 @@ UI-тесты с проверками в БД без Spring.
 # 1. поднять демо-стенд (отдельный терминал), нужен только Python 3.9+
 python3 demo/server.py              # http://localhost:8080/orders
 
-# 2. (необязательно) настройки БД для DB-спек: скопировать и вписать реальные значения.
-#    Если .env нет, DB-спеки пропускаются
-cp .env.example .env
-
-# 3. запустить тесты (нужны JDK 17 и установленный Chrome)
-./gradlew test -Denv=local
+# 2. запустить тесты (нужны JDK 17 и установленный Chrome)
+#    У демо-стенда нет БД, поэтому DB-спеки пропускаются
+./gradlew test -Denv=demo -DBASE_URL=http://localhost:8080 -DAPI_BASE_URL=http://localhost:8080/api -Dheadless=false
 ```
+
+Для демо-стенда файла `.env` нет, адреса передаются через `-D`, а DB-спеки пропускаются.
+Для настоящих стендов см. раздел «Стенды».
 
 Gradle ставить не нужно: в проекте есть wrapper (`./gradlew`, Gradle 9.3).
 Браузерный драйвер качать не нужно: Selenide использует Selenium Manager.
@@ -107,32 +107,79 @@ Gradle ставить не нужно: в проекте есть wrapper (`./gr
    лоадер скрыт → контрольная сумма строк изменилась». Это слабее и должно быть временно —
    зафиксируйте причину в коде ссылкой на задачу.
 
+## Стенды
+
+Стендов два: `dev` и `ift`. Стенд выбирается ключом `-Denv=dev` / `-Denv=ift` (или переменной окружения `ENV`).
+Без него запуск сразу падает с сообщением `Не указан стенд`.
+
+Всё, что отличается между стендами, лежит в двух файлах:
+
+```
+src/main/resources/.env.dev
+src/main/resources/.env.ift
+```
+
+Содержимое (у каждого стенда свои значения):
+
+```properties
+BASE_URL=https://registry.dev.example.com
+API_BASE_URL=https://registry.dev.example.com/api
+DB_URL=jdbc:postgresql://db.dev.example.com:5432/registry
+DB_USER=registry_test
+DB_PASSWORD=change_me
+```
+
+| Ключ | Обязателен | |
+|---|---|---|
+| `BASE_URL` | да | адрес UI |
+| `API_BASE_URL` | да | адрес API (backdoor для тестовых данных) |
+| `DB_URL` | для DB-спек | без него DB-спеки пропускаются |
+| `DB_USER`, `DB_PASSWORD` | для DB-спек | |
+| `DB_POOL_SIZE` | нет | по умолчанию `5` |
+
+- В репозитории лежат файлы с примерами значений. Локально впишите свои адреса и пароли, но не коммитьте
+  настоящие пароли: в Jenkins они берутся из Credentials, а не из этих файлов.
+- Значения пишутся без кавычек, `\` в пароле экранируется как `\\`.
+- Файлы читаются из classpath (`classpath:.env.${env}` в `@Sources` у `FrameworkConfig`), поэтому
+  запуск из IDE не зависит от Working directory. При сборке они копируются в `build/resources/main`:
+  каталог `build/` в git не попадает, но публиковать его как артефакт сборки не стоит.
+- Остальные настройки (браузер, таймауты, Selenoid) одинаковы для стендов: значения по умолчанию
+  заданы в `FrameworkConfig` через `@DefaultValue`, переопределяются через `-D` (см. «Запуск»).
+
+Если одно значение задано в нескольких местах, побеждает первое по списку:
+
+1. `-DBASE_URL=...`, `-DDB_URL=...` из команды `./gradlew`
+2. переменные окружения (так передаёт Jenkins)
+3. `src/main/resources/.env.<стенд>` (в Jenkins файла нет, Owner его пропускает)
+
+Если стенд указан с опечаткой (`-Denv=ifft`), сборка падает до запуска тестов:
+`Стенд 'ifft' не настроен: нет файла src/main/resources/.env.ifft и не передан BASE_URL`.
+
 ## Запуск
 
 ```bash
-# локально, видимый браузер (env=local включает headless=false)
-./gradlew test -Denv=local
+# стенд dev или ift (headless по умолчанию)
+./gradlew test -Denv=dev
+./gradlew test -Denv=ift
 
-# headless поверх local-профиля
-./gradlew test -Denv=local -Dheadless=true
+# видимый браузер
+./gradlew test -Denv=dev -Dheadless=false
 
 # конкретная спека
-./gradlew test --tests "io.qa.ui.orders.OrdersFilteringSpec" -Denv=local
-
-# последовательно (отладка)
-./gradlew test -Denv=local -Dparallel=false
-
-# другой адрес стенда без правки кода
-./gradlew test -Denv=local -Dbase.url=http://127.0.0.1:9000 -Dapi.base.url=http://127.0.0.1:9000/api
+./gradlew test --tests "io.qa.ui.orders.OrdersFilteringSpec" -Denv=dev
 
 # только спеки, работающие с БД
-./gradlew test --tests "io.qa.ui.db.*" -Denv=local
+./gradlew test --tests "io.qa.ui.db.*" -Denv=ift
 
-# другая БД без правки .env
-./gradlew test -Denv=local -DDB_URL=jdbc:postgresql://127.0.0.1:5433/registry
+# последовательно (отладка)
+./gradlew test -Denv=dev -Dparallel=false
+
+# другой адрес UI или БД без правки .env
+./gradlew test -Denv=dev -DBASE_URL=http://127.0.0.1:9000 -DAPI_BASE_URL=http://127.0.0.1:9000/api
+./gradlew test -Denv=dev -DDB_URL=jdbc:postgresql://127.0.0.1:5433/registry
 
 # CI / Selenoid
-./gradlew test -Denv=stage -Dremote.url=http://selenoid:4444/wd/hub -Dparallel.threads=8 -Dselenoid.video=true
+./gradlew test -Denv=ift -Dremote.url=http://selenoid:4444/wd/hub -Dparallel.threads=8 -Dselenoid.video=true
 ```
 
 Степень параллелизма ограничена снизу количеством браузеров в Selenoid (`-limit`):
@@ -140,22 +187,35 @@ Gradle ставить не нужно: в проекте есть wrapper (`./gr
 
 ### Пример Jenkins pipeline
 
-Креды БД берутся из Jenkins Credentials и передаются тестам как переменные окружения.
+Файлов `.env` в Jenkins нет: всё, что в них лежит локально, передаётся переменными окружения.
+Стенд выбирается параметром `STAND`. По нему адреса берутся из таблицы `STANDS`, а логин и пароль БД
+из Jenkins Credentials (`db-dev`, `db-ift`).
 Результаты из `build/allure-results` отправляются в Allure TestOps (через плагин Jenkins или `allurectl`).
 
 ```groovy
+def STANDS = [
+    dev: [BASE_URL    : 'https://registry.dev.example.com',
+          API_BASE_URL: 'https://registry.dev.example.com/api',
+          DB_URL      : 'jdbc:postgresql://db.dev.example.com:5432/registry'],
+    ift: [BASE_URL    : 'https://registry.ift.example.com',
+          API_BASE_URL: 'https://registry.ift.example.com/api',
+          DB_URL      : 'jdbc:postgresql://db.ift.example.com:5432/registry'],
+]
+
 pipeline {
     agent any
-    environment {
-        DB_URL = 'jdbc:postgresql://db.stage.example.com:5432/registry'
+    parameters {
+        choice(name: 'STAND', choices: ['dev', 'ift'], description: 'Стенд: UI, API и БД')
     }
     stages {
         stage('UI tests') {
             steps {
-                withCredentials([usernamePassword(credentialsId: 'registry-db',
-                                                  usernameVariable: 'DB_USER',
-                                                  passwordVariable: 'DB_PASSWORD')]) {
-                    sh './gradlew test -Denv=stage -Dremote.url=http://selenoid:4444/wd/hub -Dparallel.threads=8'
+                withEnv(STANDS[params.STAND].collect { k, v -> "${k}=${v}" }) {
+                    withCredentials([usernamePassword(credentialsId: "db-${params.STAND}",
+                                                      usernameVariable: 'DB_USER',
+                                                      passwordVariable: 'DB_PASSWORD')]) {
+                        sh "./gradlew test -Denv=${params.STAND} -Dremote.url=http://selenoid:4444/wd/hub -Dparallel.threads=8"
+                    }
                 }
             }
         }
@@ -175,32 +235,13 @@ pipeline {
 
 ### Настройки подключения
 
-| Переменная | Пример | |
-|---|---|---|
-| `DB_URL` | `jdbc:postgresql://localhost:5432/registry` | обязательна |
-| `DB_USER` | `registry_test` | обязательна |
-| `DB_PASSWORD` | — | обязательна |
-| `DB_POOL_SIZE` | `5` | необязательна |
-
-Ключи описаны в общем `FrameworkConfig`, отдельного конфига для БД нет. Owner читает их из источников
-по приоритету (выше — главнее): `-DDB_URL=...` → переменные окружения → файл `.env` в корне проекта
-(`file:${user.dir}/.env` в `@Sources`). `-DDB_*` из команды `./gradlew` прокидываются в тесты. Значит, переменная окружения в Jenkins всегда перекрывает `.env`,
-а в Jenkins `.env` просто нет, и Owner этот источник пропускает.
-
-`.env` читается как обычный `.properties`: значения без кавычек, `\` экранируется как `\\`.
-
-**Локально:**
-
-```bash
-cp .env.example .env   # и вписать свои значения; .env в .gitignore
-```
-
-**Jenkins:** `DB_URL` задаётся в `environment`, а `DB_USER` и `DB_PASSWORD` берутся из Credentials
-через `withCredentials` (пример в разделе «Пример Jenkins pipeline»).
+`DB_URL`, `DB_USER`, `DB_PASSWORD` (и необязательный `DB_POOL_SIZE`) лежат в `.env.dev` / `.env.ift`
+вместе с остальными настройками стенда, см. раздел «Стенды». В Jenkins они передаются переменными
+окружения, см. «Пример Jenkins pipeline».
 
 Подключение ленивое: пул создаётся при первом обращении к DAO. UI-спеки, которые не трогают БД,
 работают без настроек и без доступной базы. Если параметр не задан — тест падает с понятным
-сообщением, какой именно ключ и куда его добавить.
+сообщением: какой ключ, для какого стенда и в какой файл его добавить.
 
 ### Как использовать в спеке
 
@@ -268,7 +309,7 @@ psql "postgresql://USER:PASSWORD@localhost:5432/DBNAME" -f src/test/resources/db
 
 ```
 src/main/java/io/qa/ui/
-  core/config      — внешняя конфигурация (Owner), профили окружений
+  core/config      — внешняя конфигурация (Owner): FrameworkConfig, выбор стенда в ConfigProvider
   core/browser     — жизненный цикл драйвера, Selenoid caps, навигация
   core/ui          — ByTestId, UiComponent (скоупинг), UiConditions, UiFormats
   core/diagnostics — артефакты падения: скриншот, page source, console log
@@ -278,10 +319,10 @@ src/main/java/io/qa/ui/
   page/orders, page/users — две страницы с разным набором фильтров и колонок
   testdata         — билдеры сидов и backdoor-клиенты (предусловия НЕ через UI)
   db               — подключение к PostgreSQL (Db) и DAO по доменам (db/orders, db/users)
+src/main/resources/.env.dev, .env.ift — настройки стендов: адреса UI, API и БД (в git — с примерами значений)
 src/test/java/io/qa/ui/spock  — глобальный Spock-extension для артефактов падения
 src/test/groovy               — BaseSpec и спецификации (orders/ — UI, db/ — работа с БД)
 src/test/resources            — SpockConfig.groovy (параллелизм), регистрация extension
 src/test/resources/db         — DDL примерных таблиц для локального Postgres
 demo/                         — демо-стенд (SUT) для локального запуска
-.env.example                  — шаблон локальных настроек БД (сам .env в git не попадает)
 ```

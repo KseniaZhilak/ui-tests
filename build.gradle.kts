@@ -76,10 +76,22 @@ tasks.test {
 
     // Прокидываем -D... из командной строки Gradle внутрь JVM тестов
     listOf(
-        "env", "base.url", "api.base.url", "browser", "headless",
+        "env", "BASE_URL", "API_BASE_URL", "browser", "headless",
         "remote.url", "parallel", "parallel.threads", "selenoid.vnc", "selenoid.video",
         "DB_URL", "DB_USER", "DB_PASSWORD", "DB_POOL_SIZE"
     ).forEach { key -> System.getProperty(key)?.let { systemProperty(key, it) } }
+
+    doFirst {
+        val stand = System.getProperty("env") ?: System.getenv("ENV")
+            ?: throw GradleException("Не указан стенд. Запустите с -Denv=dev или -Denv=ift.")
+        val hasBaseUrl = System.getProperty("BASE_URL") != null || System.getenv("BASE_URL") != null
+        if (!hasBaseUrl && !file("src/main/resources/.env.$stand").exists()) {
+            throw GradleException(
+                "Стенд '$stand' не настроен: нет файла src/main/resources/.env.$stand " +
+                    "и не передан BASE_URL. Проверьте имя стенда: -Denv=dev или -Denv=ift."
+            )
+        }
+    }
 
     testLogging { events("passed", "failed", "skipped") }
     outputs.upToDateWhen { false }

@@ -48,8 +48,10 @@ public final class Db {
 
         private static void requireSet(String key, String value) {
             if (value == null || value.isBlank()) {
-                throw new IllegalStateException("Не задан параметр БД " + key + ". Локально: добавьте его в файл .env "
-                        + "(шаблон — .env.example). В Jenkins: передайте как переменную окружения.");
+                String env = ConfigProvider.env();
+                throw new IllegalStateException("Не задан параметр БД " + key + " для стенда '" + env + "'. "
+                        + "Локально: добавьте его в файл src/main/resources/.env." + env + ". "
+                        + "В Jenkins: передайте как переменную окружения.");
             }
         }
     }

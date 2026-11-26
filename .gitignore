@@ -5,8 +5,5 @@ build/
 allure-results/
 allure-report/
 
-# локальные секреты (credentials БД и т.п.)
-.env
-
 # локальные jar-файлы, сборкой не используются
 lib/
